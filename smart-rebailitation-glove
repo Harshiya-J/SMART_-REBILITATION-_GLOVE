@@ -1,0 +1,631 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// =====================================================
+// OLED
+// =====================================================
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+#define OLED_SDA 21
+#define OLED_SCL 22
+
+Adafruit_SSD1306 display(
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  &Wire,
+  -1
+);
+
+
+// =====================================================
+// FLEX SENSOR PINS
+// =====================================================
+
+#define THUMB_PIN   34
+#define INDEX_PIN   35
+#define MIDDLE_PIN  32
+#define RING_PIN    33
+#define LITTLE_PIN  25
+
+
+int flexPins[5] =
+{
+  THUMB_PIN,
+  INDEX_PIN,
+  MIDDLE_PIN,
+  RING_PIN,
+  LITTLE_PIN
+};
+
+
+// =====================================================
+// FINGER NAMES
+// =====================================================
+
+const char* fingerNames[5] =
+{
+  "THUMB",
+  "INDEX",
+  "MIDDLE",
+  "RING",
+  "LITTLE"
+};
+
+
+// =====================================================
+// CALIBRATION VALUES
+// =====================================================
+
+int straightValue[5];
+int bentValue[5];
+
+int rawValue[5];
+
+float bendPercent[5];
+
+
+// =====================================================
+// EXERCISE SETTINGS
+// =====================================================
+
+// A finger is considered correct at 40% bending
+
+const float THRESHOLD = 40.0;
+
+// 3 out of 5 fingers = correct exercise
+
+const int REQUIRED_FINGERS = 3;
+
+
+// =====================================================
+// SETUP
+// =====================================================
+
+void setup()
+{
+  Serial.begin(115200);
+
+  delay(1000);
+
+
+  // ---------------------------------------------------
+  // OLED START
+  // ---------------------------------------------------
+
+  Wire.begin(OLED_SDA, OLED_SCL);
+
+  if (!display.begin(
+        SSD1306_SWITCHCAPVCC,
+        0x3C))
+  {
+    Serial.println("OLED NOT FOUND!");
+
+    while (true)
+    {
+      delay(1000);
+    }
+  }
+
+
+  display.clearDisplay();
+
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setTextSize(1);
+
+  display.setCursor(0, 0);
+  display.println("SMART REHAB GLOVE");
+
+  display.setCursor(0, 20);
+  display.println("Starting...");
+
+  display.display();
+
+  delay(2000);
+
+
+  // ---------------------------------------------------
+  // CALIBRATION
+  // ---------------------------------------------------
+
+  calibrateSensors();
+}
+
+
+// =====================================================
+// CALIBRATION
+// =====================================================
+
+void calibrateSensors()
+{
+  // ===================================================
+  // STEP 1 - STRAIGHT
+  // ===================================================
+
+  display.clearDisplay();
+
+  display.setTextSize(1);
+
+  display.setCursor(0, 0);
+  display.println("CALIBRATION");
+
+  display.setCursor(0, 15);
+  display.println("KEEP FINGERS");
+
+  display.setCursor(0, 28);
+  display.println("COMPLETELY STRAIGHT");
+
+  display.setCursor(0, 48);
+  display.println("WAIT...");
+
+  display.display();
+
+
+  Serial.println();
+  Serial.println("================================");
+  Serial.println("STEP 1 - STRAIGHT");
+  Serial.println("================================");
+  Serial.println("Keep ALL 5 fingers completely");
+  Serial.println("STRAIGHT.");
+  Serial.println("Taking reading in 5 seconds...");
+  Serial.println();
+
+
+  delay(5000);
+
+
+  for (int i = 0; i < 5; i++)
+  {
+    straightValue[i] =
+      averageReading(flexPins[i]);
+  }
+
+
+  Serial.println("STRAIGHT VALUES:");
+
+  for (int i = 0; i < 5; i++)
+  {
+    Serial.print(fingerNames[i]);
+    Serial.print(" = ");
+    Serial.println(straightValue[i]);
+  }
+
+
+  // ===================================================
+  // STEP 2 - BENT
+  // ===================================================
+
+  display.clearDisplay();
+
+  display.setCursor(0, 0);
+  display.println("CALIBRATION");
+
+  display.setCursor(0, 15);
+  display.println("BEND ALL FINGERS");
+
+  display.setCursor(0, 28);
+  display.println("INWARD FULLY");
+
+  display.setCursor(0, 48);
+  display.println("WAIT...");
+
+  display.display();
+
+
+  Serial.println();
+  Serial.println("================================");;
+  Serial.println("================================");
+  Serial.println("Bend ALL 5 fingers INWARD.");
+  Serial.println("Keep them fully bent.");
+  Serial.println("Taking reading in 5 seconds...");
+  Serial.println();
+
+
+  delay(5000);
+
+
+  for (int i = 0; i < 5; i++)
+  {
+    bentValue[i] =
+      averageReading(flexPins[i]);
+  }
+
+
+  Serial.println("BENT VALUES:");
+
+  for (int i = 0; i < 5; i++)
+  {
+    Serial.print(fingerNames[i]);
+    Serial.print(" = ");
+    Serial.println(bentValue[i]);
+  }
+
+
+  // ===================================================
+  // SHOW CALIBRATION
+  // ===================================================
+
+  Serial.println();
+  Serial.println("================================");
+  Serial.println("CALIBRATION COMPLETE");
+  Serial.println("================================");
+
+  Serial.println();
+
+  for (int i = 0; i < 5; i++)
+  {
+    Serial.print(fingerNames[i]);
+
+    Serial.print("  Straight = ");
+    Serial.print(straightValue[i]);
+
+    Serial.print("  Bent = ");
+    Serial.println(bentValue[i]);
+  }
+
+
+  // ---------------------------------------------------
+  // CHECK SENSOR DIFFERENCE
+  // ---------------------------------------------------
+
+  Serial.println();
+  Serial.println("SENSOR DIFFERENCE:");
+
+  for (int i = 0; i < 5; i++)
+  {
+    Serial.print(fingerNames[i]);
+    Serial.print(" = ");
+
+    Serial.println(
+      abs(straightValue[i] - bentValue[i])
+    );
+  }
+
+
+  display.clearDisplay();
+
+  display.setCursor(0, 0);
+  display.println("CALIBRATION");
+
+  display.setCursor(0, 20);
+  display.println("COMPLETE!");
+
+  display.setCursor(0, 40);
+  display.println("START EXERCISE");
+
+  display.display();
+
+  delay(2000);
+
+
+  Serial.println();
+  Serial.println("START EXERCISE");
+  Serial.println("40% = CORRECT FINGER");
+  Serial.println("3/5 = CORRECT EXERCISE");
+  Serial.println();
+}
+
+
+// =====================================================
+// LOOP
+// =====================================================
+
+void loop()
+{
+  // ---------------------------------------------------
+  // READ ALL SENSORS
+  // ---------------------------------------------------
+
+  for (int i = 0; i < 5; i++)
+  {
+    rawValue[i] =
+      analogRead(flexPins[i]);
+  }
+
+
+  // ---------------------------------------------------
+  // CALCULATE PERCENTAGE
+  // ---------------------------------------------------
+
+  for (int i = 0; i < 5; i++)
+  {
+    calculatePercentage(i);
+  }
+
+
+  // ---------------------------------------------------
+  // COUNT CORRECT FINGERS
+  // ---------------------------------------------------
+
+  int correctFingers = 0;
+
+
+  for (int i = 0; i < 5; i++)
+  {
+    if (bendPercent[i] >= THRESHOLD)
+    {
+      correctFingers++;
+    }
+  }
+
+
+  // ---------------------------------------------------
+  // OLED
+  // ---------------------------------------------------
+
+  showOLED(correctFingers);
+
+
+  // ---------------------------------------------------
+  // SERIAL
+  // ---------------------------------------------------
+
+  showSerial(correctFingers);
+
+
+  delay(500);
+}
+
+
+// =====================================================
+// CALCULATE BENDING PERCENTAGE
+// =====================================================
+
+void calculatePercentage(int i)
+{
+  int straight = straightValue[i];
+
+  int bent = bentValue[i];
+
+  int raw = rawValue[i];
+
+
+  // Difference between straight and bent
+
+  int difference =
+    abs(straight - bent);
+
+
+  // ---------------------------------------------------
+  // SENSOR NOT CHANGING
+  // ---------------------------------------------------
+
+  if (difference < 5)
+  {
+    bendPercent[i] = 0;
+
+    return;
+  }
+
+
+  // ---------------------------------------------------
+  // IF BENT VALUE IS LOWER
+  // ---------------------------------------------------
+
+  if (bent < straight)
+  {
+    bendPercent[i] =
+      ((float)(straight - raw) /
+       (float)(straight - bent)) * 100.0;
+  }
+
+
+  // ---------------------------------------------------
+  // IF BENT VALUE IS HIGHER
+  // ---------------------------------------------------
+
+  else
+  {
+    bendPercent[i] =
+      ((float)(raw - straight) /
+       (float)(bent - straight)) * 100.0;
+  }
+
+
+  // ---------------------------------------------------
+  // LIMIT 0 - 100
+  // ---------------------------------------------------
+
+  if (bendPercent[i] < 0)
+  {
+    bendPercent[i] = 0;
+  }
+
+  if (bendPercent[i] > 100)
+  {
+    bendPercent[i] = 100;
+  }
+}
+
+
+// =====================================================
+// AVERAGE SENSOR READING
+// =====================================================
+
+int averageReading(int pin)
+{
+  long total = 0;
+
+  const int samples = 30;
+
+
+  for (int i = 0; i < samples; i++)
+  {
+    total += analogRead(pin);
+
+    delay(10);
+  }
+
+
+  return total / samples;
+}
+
+
+// =====================================================
+// OLED DISPLAY
+// =====================================================
+
+void showOLED(int correctFingers)
+{
+  display.clearDisplay();
+
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setTextSize(1);
+
+
+  // ---------------------------------------------------
+  // TITLE
+  // ---------------------------------------------------
+
+  display.setCursor(0, 0);
+
+  display.println("REHAB EXERCISE");
+
+
+  // ---------------------------------------------------
+  // THUMB
+  // ---------------------------------------------------
+
+  display.setCursor(0, 13);
+
+  display.print("T:");
+  display.print((int)bendPercent[0]);
+  display.print("%");
+
+
+  // ---------------------------------------------------
+  // INDEX
+  // ---------------------------------------------------
+
+  display.setCursor(64, 13);
+
+  display.print("I:");
+  display.print((int)bendPercent[1]);
+  display.print("%");
+
+
+  // ---------------------------------------------------
+  // MIDDLE
+  // ---------------------------------------------------
+
+  display.setCursor(0, 25);
+
+  display.print("M:");
+  display.print((int)bendPercent[2]);
+  display.print("%");
+
+
+  // ---------------------------------------------------
+  // RING
+  // ---------------------------------------------------
+
+  display.setCursor(64, 25);
+
+  display.print("R:");
+  display.print((int)bendPercent[3]);
+  display.print("%");
+
+
+  // ---------------------------------------------------
+  // LITTLE
+  // ---------------------------------------------------
+
+  display.setCursor(0, 37);
+
+  display.print("L:");
+  display.print((int)bendPercent[4]);
+  display.print("%");
+
+
+  // ---------------------------------------------------
+  // RESULT
+  // ---------------------------------------------------
+
+  display.setCursor(0, 51);
+
+
+  if (correctFingers >= REQUIRED_FINGERS)
+  {
+    display.println("EXERCISE CORRECT!");
+  }
+  else
+  {
+    display.println("EXERCISE INCORRECT");
+  }
+
+
+  display.display();
+}
+
+
+// =====================================================
+// SERIAL MONITOR
+// =====================================================
+
+void showSerial(int correctFingers)
+{
+  Serial.println("--------------------------------");
+
+  Serial.print("THUMB  Raw: ");
+  Serial.print(rawValue[0]);
+
+  Serial.print("  Bend: ");
+  Serial.print((int)bendPercent[0]);
+
+  Serial.println("%");
+
+
+  Serial.print("INDEX  Raw: ");
+  Serial.print(rawValue[1]);
+
+  Serial.print("  Bend: ");
+  Serial.print((int)bendPercent[1]);
+
+  Serial.println("%");
+
+
+  Serial.print("MIDDLE Raw: ");
+  Serial.print(rawValue[2]);
+
+  Serial.print("  Bend: ");
+  Serial.print((int)bendPercent[2]);
+
+  Serial.println("%");
+
+
+  Serial.print("RING   Raw: ");
+  Serial.print(rawValue[3]);
+
+  Serial.print("  Bend: ");
+  Serial.print((int)bendPercent[3]);
+
+  Serial.println("%");
+
+
+  Serial.print("LITTLE Raw: ");
+  Serial.print(rawValue[4]);
+
+  Serial.print("  Bend: ");
+  Serial.print((int)bendPercent[4]);
+
+  Serial.println("%");
+
+
+  Serial.println("--------------------------------");
+
+
+  if (correctFingers >= REQUIRED_FINGERS)
+  {
+    Serial.println("EXERCISE CORRECT!");
+  }
+  else
+  {
+    Serial.println("EXERCISE INCORRECT");
+  }
+
+  Serial.println();
+}
